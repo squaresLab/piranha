@@ -2,7 +2,7 @@ let tree;
 let cur_node;
 // Move these outside of the function to maintain their state across different selections
 let dict = {};
-let constraints = [];
+let equalNodes = [];
 
 (async () => {
   const CAPTURE_REGEX = /@\s*([\w\._-]+)/g;
@@ -21,15 +21,12 @@ let constraints = [];
     "red",
     "sienna",
   ];
-
-  const scriptURL = document.currentScript.getAttribute("src");
-
   const codeInput = document.getElementById("code-input");
   const languageSelect = document.getElementById("language-select");
   const loggingCheckbox = document.getElementById("logging-checkbox");
   const outputContainer = document.getElementById("output-container");
   const outputContainerScroll = document.getElementById(
-    "output-container-scroll"
+    "output-container-scroll",
   );
   const playgroundContainer = document.getElementById("playground-container");
   const equalCheckbox = document.getElementById("equal-checkbox");
@@ -75,11 +72,9 @@ let constraints = [];
   queryEditor.on("changes", debounce(handleQueryChange, 150));
 
   loggingCheckbox.addEventListener("change", handleLoggingChange);
-  equalCheckbox.addEventListener("change", handleQueryEnableChange);
   languageSelect.addEventListener("change", handleLanguageChange);
   outputContainer.addEventListener("click", handleTreeClick);
 
-  handleQueryEnableChange();
   await handleLanguageChange();
 
   playgroundContainer.style.visibility = "visible";
@@ -103,7 +98,7 @@ let constraints = [];
     tree = null;
     languageName = newLanguageName;
     parser.setLanguage(languagesByName[newLanguageName]);
-    handleCodeChange();
+    await handleCodeChange();
     handleQueryChange();
   }
 
@@ -187,7 +182,7 @@ let constraints = [];
             fieldName = "";
           }
           row = `<div>${"  ".repeat(
-            indentLevel
+            indentLevel,
           )}${fieldName}<a class='plain' href="#" data-id=${id} data-range="${
             start.row
           },${start.column},${end.row},${end.column}">${displayName}</a> [${
@@ -216,6 +211,21 @@ let constraints = [];
     handleCursorMovement();
   }
 
+  function getSelection(codeEditor) {
+    const selection = codeEditor.getDoc().listSelections()[0];
+    let start = { row: selection.anchor.line, column: selection.anchor.ch };
+    let end = { row: selection.head.line, column: selection.head.ch };
+    if (
+      start.row > end.row ||
+      (start.row === end.row && start.column > end.column)
+    ) {
+      let swap = end;
+      end = start;
+      start = swap;
+    }
+    return { start, end };
+  }
+
   function runTreeQuery(_, startRow, endRow) {
     if (endRow == null) {
       const viewport = codeEditor.getViewport();
@@ -231,7 +241,7 @@ let constraints = [];
         const captures = query.captures(
           tree.rootNode,
           { row: startRow, column: 0 },
-          { row: endRow, column: 0 }
+          { row: endRow, column: 0 },
         );
         let lastNodeId;
         for (const { name, node } of captures) {
@@ -245,7 +255,7 @@ let constraints = [];
               inclusiveLeft: true,
               inclusiveRight: true,
               css: `color: ${colorForCaptureName(name)}`,
-            }
+            },
           );
         }
       }
@@ -278,7 +288,7 @@ let constraints = [];
                 inclusiveLeft: true,
                 inclusiveRight: true,
                 css: `color: ${colorForCaptureName(match[1])}`,
-              }
+              },
             );
           }
           row++;
@@ -315,16 +325,12 @@ let constraints = [];
   function handleTreeClick(event) {
     if (event.target.tagName === "A") {
       event.preventDefault();
-      const [
-        startRow,
-        startColumn,
-        endRow,
-        endColumn,
-      ] = event.target.dataset.range.split(",").map((n) => parseInt(n));
+      const [startRow, startColumn, endRow, endColumn] =
+        event.target.dataset.range.split(",").map((n) => parseInt(n));
       codeEditor.focus();
       codeEditor.setSelection(
         { line: startRow, ch: startColumn },
-        { line: endRow, ch: endColumn }
+        { line: endRow, ch: endColumn },
       );
     }
   }
@@ -341,10 +347,6 @@ let constraints = [];
     } else {
       parser.setLogger(null);
     }
-  }
-
-  function handleQueryEnableChange() {
-    handleQueryChange();
   }
 
   function treeEditForEditorChange(change) {
@@ -401,16 +403,17 @@ let constraints = [];
   let constraints = [];
 
   // DFS that populates a query string
-  function fillQuery(node, graph, i) {
+  function fillQuery(node, graph, i, level = 2) {
     let type = node.type;
-    let query = `(${node.type} `;
+    let query = "\n" + " ".repeat(level) + `(${node.type} `;
     let next = graph[node];
-    if (next == null) {
+    if (equalNodes.findIndex((n) => n.id === node.id) !== -1) {
       let text_repr = node.text.replaceAll("\n", "\\n");
       constraints.push(`(#eq? @node${i} "${text_repr}")`);
-    } else {
+    }
+    if (next != null) {
       for (let j = 0; j < next.length; j++) {
-        let result = fillQuery(next[j], graph, i);
+        let result = fillQuery(next[j], graph, i, level + 2);
         query += result.query;
         i = result.i;
       }
@@ -421,46 +424,48 @@ let constraints = [];
   }
 
   function handleEquality() {
-    const selection = codeEditor.getDoc().listSelections()[0];
-    let start = { row: selection.anchor.line, column: selection.anchor.ch };
-    let end = { row: selection.head.line, column: selection.head.ch };
-    if (
-      start.row > end.row ||
-      (start.row === end.row && start.column > end.column)
-    ) {
-      let swap = end;
-      end = start;
-      start = swap;
-    }
+    let { start, end } = getSelection(codeEditor);
 
     let node = tree.rootNode.namedDescendantForPosition(start, end);
+    equalNodes.push(node);
 
     // DAG from cur node to the selected one
-    while (node.toString() !== cur_node.toString()) {
-      if (dict[node.parent] === undefined) {
-        dict[node.parent] = [node];
-      } else {
-        // check if the node is already in the array
-        let alreadyExists = dict[node.parent].some(
-          (n) => n.toString() === node.toString()
-        );
-        if (!alreadyExists) {
-          dict[node.parent].push(node);
-        }
+    while (node && node.id !== cur_node.id) {
+      // If the parent node doesn't exist in the dict, create an array and add the current node
+      dict[node.parent] = dict[node.parent] || [];
+      // Check if the node is already in the array
+      let alreadyExists = dict[node.parent].some((n) => n.id === node.id);
+      // If the node does not exist already, add it to the parent's array
+      if (!alreadyExists) {
+        dict[node.parent].push(node);
+        // Sort the parent's array based on the order of children in the parent node
+        dict[node.parent].sort((a, b) => {
+          let aIndex = node.parent.children.findIndex(
+            (child) => child.id === a.id,
+          );
+          let bIndex = node.parent.children.findIndex(
+            (child) => child.id === b.id,
+          );
+          return aIndex - bIndex;
+        });
       }
+      // Go up to the parent node
       node = node.parent;
     }
 
+    // If node is null, function returns
+    if (!node) {
+      return;
+    }
+
     // remove duplicates from the constraints array
+    constraints = [];
     let queryString = fillQuery(node, dict, 0).query;
-    constraints = [...new Set(constraints)];
     for (let i = 0; i < constraints.length; i++) {
       queryString += "\n" + constraints[i];
     }
-
     // append new query to the existing one
     queryEditor.getDoc().setValue(`(${queryString})`);
-
     // Trigger a handleQueryChange to apply the new query
     handleQueryChange();
   }
@@ -472,37 +477,28 @@ let constraints = [];
     }
 
     dict = {};
-    constraints = [];
+    equalNodes = [];
 
-    const selection = codeEditor.getDoc().listSelections()[0];
-    let start = { row: selection.anchor.line, column: selection.anchor.ch };
-    let end = { row: selection.head.line, column: selection.head.ch };
-    if (
-      start.row > end.row ||
-      (start.row === end.row && start.column > end.column)
-    ) {
-      let swap = end;
-      end = start;
-      start = swap;
-    }
+    let { start, end } = getSelection(codeEditor);
     const node = tree.rootNode.namedDescendantForPosition(start, end);
     cur_node = tree.rootNode.namedDescendantForPosition(start, end);
 
     let queryString = `(${node.type} `;
     let cursor = node.walk();
-    let i = 0;
 
+    let childCount = 0;
     if (cursor.gotoFirstChild()) {
       do {
         if (cursor.nodeIsNamed) {
+          let child_kind = cursor.nodeType;
           if (cursor.currentFieldName() !== null) {
-            queryString += `${cursor.currentFieldName()}: (_) @child${i}\n `;
+            queryString += `${cursor.currentFieldName()}: (${child_kind}) @child${childCount}\n `;
           } else {
-            queryString += `(_) @child${i}\n `;
+            queryString += `(${child_kind}) @child${childCount}\n `;
           }
         }
-        i++;
-      } while (cursor.gotoNextSibling());
+        childCount++;
+      } while (cursor.gotoNextSibling() && childCount < 5);
     }
 
     queryString += ") @root";
@@ -511,7 +507,7 @@ let constraints = [];
     queryEditor.getDoc().setValue(queryString);
 
     // Trigger a handleQueryChange to apply the new query
-    handleQueryChange();
+    // handleQueryChange();
   }
   function saveState() {
     localStorage.setItem("language", languageSelect.value);

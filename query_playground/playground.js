@@ -407,16 +407,16 @@ let equalNodes = [];
     let type = node.type;
     let query = "\n" + " ".repeat(level) + `(${node.type} `;
     let next = graph[node];
-    if (equalNodes.findIndex((n) => n.id === node.id) !== -1) {
-      let text_repr = node.text.replaceAll("\n", "\\n");
-      constraints.push(`(#eq? @node${i} "${text_repr}")`);
-    }
     if (next != null) {
       for (let j = 0; j < next.length; j++) {
         let result = fillQuery(next[j], graph, i, level + 2);
         query += result.query;
         i = result.i;
       }
+    }
+    if (equalNodes.findIndex((n) => n.id === node.id) !== -1) {
+      let text_repr = node.text.replaceAll("\n", "\\n");
+      constraints.push(`(#eq? @node${i} "${text_repr}")`);
     }
     query += `) @node${i}`;
     i = i + 1;

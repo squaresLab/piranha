@@ -14,64 +14,51 @@
 use std::collections::HashSet;
 use tree_sitter::{Node, TreeCursor};
 
-/// Function to create the query for matching nodes
-pub fn create_query(
-  mut cursor: TreeCursor, query: &mut String, node_id: &mut i32, source_code: &str,
-  target_code: &str,
-) -> bool {
-  let first_node = cursor.node().kind();
-  let node_text = cursor
-    .node()
-    .utf8_text(source_code.as_bytes())
-    .unwrap_or("");
+pub struct Query {
+  code_before: String,
+  coder_after: String,
+  node_counter: i32,
+  query_string: String,
+}
 
-  if !cursor.goto_first_child() {
-    return false;
-  }
+impl Query {
+  /// Function to create the query for matching nodes
 
-  query.push_str(format!("({} ", first_node).as_str());
-  let mut found = false;
+  pub fn merge_child_query(&mut self, other: &Query) {}
 
-  if node_text != target_code {
+  pub fn create_query(&mut self, mut cursor: TreeCursor) -> bool {
+    let first_node = cursor.node().kind();
+    let _node_text = cursor
+      .node()
+      .utf8_text(&self.code_before.as_bytes())
+      .unwrap_or("");
+
+    // If there are no children, we are done/
+    if !cursor.goto_first_child() {
+      return false;
+    }
+
+    &self
+      .query_string
+      .push_str(format!("({} ", first_node).as_str());
+    let mut found = false;
+
+    // If this is not the target code, we continue our search
+
     loop {
       if let Some(value) = cursor.field_name() {
-        query.push_str(format!("{}: ", value).as_str());
-        let mut tmp_query = String::from("");
-        if create_query(
-          cursor.clone(),
-          &mut tmp_query,
-          node_id,
-          source_code,
-          target_code,
-        ) {
-          query.push_str(tmp_query.as_str());
-          found = true;
-        } else {
-          query.push_str(" (_)\n");
-        }
+        &self.query_string.push_str(format!("{}: ", value).as_str());
       } else if cursor.node().is_named() {
-        let mut tmp_query = String::from("");
-        if create_query(
-          cursor.clone(),
-          &mut tmp_query,
-          node_id,
-          source_code,
-          target_code,
-        ) {
-          query.push_str(tmp_query.as_str());
-          found = true;
-        }
       }
       if !cursor.goto_next_sibling() {
         break;
       }
     }
-    query.push_str(format!(") @node{}", node_id).as_str());
-    *node_id += 1;
-    found
-  } else {
-    query.push_str(") @to_replace");
-    *node_id += 1;
+    &self
+      .query_string
+      .push_str(format!(") @node{}", &self.node_counter).as_str());
+    self.node_counter = self.node_counter + 1;
+
     true
   }
 }
@@ -91,10 +78,13 @@ pub fn write_query(source_code1: &String, source_code2: &String, res1: Vec<Node>
         let mut query = String::from("");
         // write the query by decomposing the node
         let mut cursor = node1.walk();
-        let mut i = 0;
-        if create_query(cursor, &mut query, &mut i, &source_code1, &node2_text) {
-          println!("{}", query);
-        }
+        let mut query = Query {
+          code_before: source_code1.clone(),
+          coder_after: source_code2.clone(),
+          node_counter: 0,
+          query_string: String::from(""),
+        };
+        query.create_query(cursor);
       }
     }
   }

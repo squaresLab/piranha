@@ -16,8 +16,8 @@ use std::process::Command;
 
 #[derive(Clone)]
 pub struct DiffRanges {
-  pub file1: Vec<(usize, usize)>,
-  pub file2: Vec<(usize, usize)>,
+  pub file_before: Vec<(usize, usize)>,
+  pub file_after: Vec<(usize, usize)>,
 }
 
 pub fn get_diff(path1: &String, path2: &String) -> DiffRanges {
@@ -48,7 +48,7 @@ pub fn parse_diff(diff: &str) -> Result<DiffRanges, Box<dyn std::error::Error>> 
     file2_ranges.push((start2, end2));
   }
   Ok(DiffRanges {
-    file1: file1_ranges,
-    file2: file2_ranges,
+    file_before: file1_ranges,
+    file_after: file2_ranges,
   })
 }

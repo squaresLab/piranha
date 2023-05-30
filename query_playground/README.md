@@ -1,4 +1,4 @@
-# Tree Sitter Query Playground README
+# Piranha Query Playground
 
 Welcome to the Piranha Query Playground! This tool is based on the original Tree Sitter Playground, and is designed to help users create and test Tree Sitter queries in an interactive manner. It allows users to select nodes and generate queries based on these selections. It can handle equality of nodes and generate relevant constraints.
 

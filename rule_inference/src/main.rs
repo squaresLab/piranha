@@ -11,38 +11,34 @@
  limitations under the License.
 */
 
-use crate::infer::PiranhaInferenceBuilder;
+use crate::synthesis::PiranhaInferenceEngineBuilder;
 use clap::Parser;
 use derive_builder::Builder;
 use getset::{CopyGetters, Getters};
 use std::fs;
 use std::string::String;
 
-mod diff;
 mod infer;
-mod query;
-mod tree_sitter_utilities;
+mod synthesis;
 
 #[derive(Clone, Getters, CopyGetters, Debug, Parser, Builder)]
 #[clap(version = "0.1", author = "Your Name")]
-struct Opts {
+struct InferenceOpts {
   #[clap(short = 's', long)]
-  file1: String,
+  source_file: String,
 
   #[clap(short = 't', long)]
-  file2: String,
+  target_file: String,
 }
 
 fn main() {
-  let opts: Opts = Opts::parse();
+  let opts: InferenceOpts = InferenceOpts::parse();
 
-  let code_before = fs::read_to_string(&opts.file1).expect("Unable to read file");
-  let code_after = fs::read_to_string(&opts.file2).expect("Unable to read file");
-  let diff_ranges = diff::get_diff(&opts.file1, &opts.file2);
-  let inference_engine = PiranhaInferenceBuilder::default()
+  let code_before = fs::read_to_string(&opts.source_file).expect("Unable to read source file");
+  let code_after = fs::read_to_string(&opts.target_file).expect("Unable to read target file");
+  let inference_engine = PiranhaInferenceEngineBuilder::default()
     .code_before(code_before)
     .code_after(code_after)
-    .diff_ranges(diff_ranges)
     .build()
     .expect("Unable to build rule inference engine");
   inference_engine.infer_rule();

@@ -11,57 +11,100 @@
  limitations under the License.
 */
 
-use crate::diff;
-use crate::diff::DiffRanges;
-use crate::query;
-use crate::tree_sitter_utilities;
+use clap::builder::Str;
+use std::result::Result;
 
 use derive_builder::Builder;
 use tree_sitter::Parser as TParser;
+use tree_sitter::{Node, TreeCursor};
 use tree_sitter_java as java;
 
-#[derive(Builder)]
-pub struct PiranhaInference {
-  code_before: String,
-  code_after: String,
-  diff_ranges: DiffRanges,
+#[cfg(test)]
+#[path = "unit_tests/test_infer.rs"]
+mod unit_tests;
+
+#[derive(Builder, Debug)]
+pub struct PiranhaRule {
+  query: String,
+  replace_node: String,
+  replacement_str: String,
 }
 
-impl PiranhaInference {
-  pub fn infer_rule(&self) {
-    // Parse the source files
-    let mut parser = TParser::new();
-    parser
-      .set_language(java::language())
-      .expect("Error setting language");
+/// `ReplaceWithChild` constructs a query to replace a node with one of its children.
+pub struct ReplaceWithChild<'a> {
+  root: &'a Node<'a>,
+  child: &'a Node<'a>,
+}
 
-    let tree_before = parser
-      .parse(&self.code_before, None)
-      .expect("Error parsing source code");
-    let tree_after = parser
-      .parse(&self.code_after, None)
-      .expect("Error parsing source code");
+impl<'a> ReplaceWithChild<'a> {
+  // Defining constants
+  const PARENT_ID: &'static str = "parent";
+  const CHILD_ID: &'static str = "child";
 
-    // Find the Tree-sitter nodes corresponding to the diff
-    let nodes_before = tree_sitter_utilities::mark_changed_nodes(
-      tree_before.walk(),
-      &self.code_before,
-      &self.diff_ranges.file_before,
-    );
-    tree_sitter_utilities::print_smallest_changed_nodes(nodes_before.clone());
+  pub fn new(root: &'a Node<'a>, child: &'a Node<'a>) -> Self {
+    ReplaceWithChild { root, child }
+  }
 
-    let nodes_after = tree_sitter_utilities::mark_changed_nodes(
-      tree_after.walk(),
-      &self.code_after,
-      &self.diff_ranges.file_after,
-    );
-    tree_sitter_utilities::print_smallest_changed_nodes(nodes_after.clone());
+  /// Builds a Piranha rule for replacing `root` with `child`.
+  pub fn infer_rule(&self) -> Result<PiranhaRule, &'static str> {
+    let query = self.create_query_for_target();
+    match query {
+      Some(value) => Ok(
+        PiranhaRuleBuilder::default()
+          .query(value)
+          .replace_node(Self::PARENT_ID.to_string())
+          .replacement_str(Self::CHILD_ID.to_string())
+          .build()
+          .unwrap(),
+      ),
+      _ => Err("Unable to infer rule."),
+    }
+  }
 
-    query::write_query(
-      &self.code_before,
-      &self.code_after,
-      nodes_before,
-      nodes_after,
-    );
+  /// Builds a Tree-sitter query that selects the `root` and the `child`.
+  pub fn create_query_for_target(&self) -> Option<String> {
+    self
+      .create_query_for_target_aux(self.root)
+      .map(|query_string| format!("{} @{}", query_string.trim(), Self::PARENT_ID.to_string()))
+  }
+
+  /// Recursively searches `current_node`'s children until it finds the `child`.
+  /// Discards branch if `child` is not found.
+  ///
+  /// # Arguments
+  ///
+  /// * `current_node` - Node currently being searched.
+  fn create_query_for_target_aux(&self, current_node: &'a Node<'a>) -> Option<String> {
+    if current_node.id() == self.child.id() {
+      return Some(format!(
+        "({}) @{}",
+        self.child.kind(),
+        Self::CHILD_ID.to_string()
+      ));
+    }
+
+    let mut query_string = String::from(format!("({} ", current_node.kind()));
+    let mut query_parts: Vec<String> = Vec::new();
+
+    // Visit each child and check whether we find a node of interest
+    let mut cursor = current_node.walk();
+    if cursor.goto_first_child() {
+      while let child = cursor.node() {
+        let field_name = cursor.field_name();
+        if let Some(partial_query) = self.create_query_for_target_aux(&child) {
+          let addition = match field_name {
+            Some(name) if !name.is_empty() => format!("{}: ({})", name, partial_query),
+            _ => format!("({})", partial_query), // if the node doesn't have a field name
+          };
+          query_parts.push(addition);
+        }
+        if !cursor.goto_next_sibling() {
+          break;
+        }
+      }
+    }
+    query_string.push_str(&query_parts.join(" "));
+    query_string.push_str(")");
+    Some(query_string).filter(|_| !query_parts.is_empty()) // only return if we found a node of interest
   }
 }

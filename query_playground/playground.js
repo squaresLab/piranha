@@ -1,8 +1,9 @@
+/* ########## THIS CODE COMES FROM THE TREE SITTER PLAYGROUND  ##########
+   ########## https://github.com/tree-sitter/tree-sitter/      ##########
+
+ */
+
 let tree;
-let cur_node;
-// Move these outside of the function to maintain their state across different selections
-let dict = {};
-let equalNodes = [];
 
 (async () => {
   const CAPTURE_REGEX = /@\s*([\w\._-]+)/g;
@@ -79,6 +80,7 @@ let equalNodes = [];
 
   playgroundContainer.style.visibility = "visible";
 
+
   async function handleLanguageChange() {
     const newLanguageName = languageSelect.value;
     if (!languagesByName[newLanguageName]) {
@@ -101,6 +103,7 @@ let equalNodes = [];
     await handleCodeChange();
     handleQueryChange();
   }
+
 
   async function handleCodeChange(editor, changes) {
     const newText = codeEditor.getValue() + "\n";
@@ -211,20 +214,7 @@ let equalNodes = [];
     handleCursorMovement();
   }
 
-  function getSelection(codeEditor) {
-    const selection = codeEditor.getDoc().listSelections()[0];
-    let start = { row: selection.anchor.line, column: selection.anchor.ch };
-    let end = { row: selection.head.line, column: selection.head.ch };
-    if (
-      start.row > end.row ||
-      (start.row === end.row && start.column > end.column)
-    ) {
-      let swap = end;
-      end = start;
-      start = swap;
-    }
-    return { start, end };
-  }
+
 
   function runTreeQuery(_, startRow, endRow) {
     if (endRow == null) {
@@ -397,21 +387,73 @@ let equalNodes = [];
     }
   }
 
-  // DFS that populates a query string
-  // Move these outside of the function to maintain their state across different selections
-  let dict = {};
-  let constraints = [];
+  function saveState() {
+    localStorage.setItem("language", languageSelect.value);
+    localStorage.setItem("sourceCode", codeEditor.getValue());
+    saveQueryState();
+  }
 
+  function saveQueryState() {
+    localStorage.setItem("queryEnabled", equalCheckbox.checked);
+    localStorage.setItem("query", queryEditor.getValue());
+  }
+
+  function debounce(func, wait, immediate) {
+    var timeout;
+    return function () {
+      var context = this,
+          args = arguments;
+      var later = function () {
+        timeout = null;
+        if (!immediate) func.apply(context, args);
+      };
+      var callNow = immediate && !timeout;
+      clearTimeout(timeout);
+      timeout = setTimeout(later, wait);
+      if (callNow) func.apply(context, args);
+    };
+  }
+
+
+/* ########## NEW CODE ##########
+   This is the code for the new query editor
+   with generations based on the user's selection
+   ########## NEW CODE ##########
+*/
+
+  // These variables are used to maintain the state of the generated query
+  let graph = {}; // Graph that maintains the relevant parts of the query (from the selection node to nodes that were selected as equal)
+  let equalNodes = []; // Store the nodes that the user selected as equal
+
+  // Get the selection from the code editor
+  function getSelection(codeEditor) {
+    const selection = codeEditor.getDoc().listSelections()[0];
+    let start = { row: selection.anchor.line, column: selection.anchor.ch };
+    let end = { row: selection.head.line, column: selection.head.ch };
+    if (
+        start.row > end.row ||
+        (start.row === end.row && start.column > end.column)
+    ) {
+      let swap = end;
+      end = start;
+      start = swap;
+    }
+    return { start, end };
+  }
+
+  // NEW CODE
   // DFS that populates a query string
   function fillQuery(node, graph, i, level = 2) {
     let type = node.type;
     let query = "\n" + " ".repeat(level) + `(${node.type} `;
     let next = graph[node];
+    let constraints = [];
     if (next != null) {
       for (let j = 0; j < next.length; j++) {
         let result = fillQuery(next[j], graph, i, level + 2);
         query += result.query;
         i = result.i;
+        constraints = constraints.concat(result.constraints);
       }
     }
     if (equalNodes.findIndex((n) => n.id === node.id) !== -1) {
@@ -420,9 +462,11 @@ let equalNodes = [];
     }
     query += `) @node${i}`;
     i = i + 1;
-    return { i: i, query: query };
+    return { i: i, query: query, constraints: constraints };
   }
 
+
+  // When the user selects something as equal
   function handleEquality() {
     let { start, end } = getSelection(codeEditor);
 
@@ -432,14 +476,14 @@ let equalNodes = [];
     // DAG from cur node to the selected one
     while (node && node.id !== cur_node.id) {
       // If the parent node doesn't exist in the dict, create an array and add the current node
-      dict[node.parent] = dict[node.parent] || [];
+      graph[node.parent] = graph[node.parent] || [];
       // Check if the node is already in the array
-      let alreadyExists = dict[node.parent].some((n) => n.id === node.id);
+      let alreadyExists = graph[node.parent].some((n) => n.id === node.id);
       // If the node does not exist already, add it to the parent's array
       if (!alreadyExists) {
-        dict[node.parent].push(node);
+        graph[node.parent].push(node);
         // Sort the parent's array based on the order of children in the parent node
-        dict[node.parent].sort((a, b) => {
+        graph[node.parent].sort((a, b) => {
           let aIndex = node.parent.children.findIndex(
             (child) => child.id === a.id,
           );
@@ -458,9 +502,9 @@ let equalNodes = [];
       return;
     }
 
-    // remove duplicates from the constraints array
-    constraints = [];
-    let queryString = fillQuery(node, dict, 0).query;
+    let query_obj = fillQuery(node, graph, 0);
+    let constraints = query_obj.constraints;
+    let queryString = query_obj.query;
     for (let i = 0; i < constraints.length; i++) {
       queryString += "\n" + constraints[i];
     }
@@ -469,6 +513,8 @@ let equalNodes = [];
     // Trigger a handleQueryChange to apply the new query
     handleQueryChange();
   }
+
+  // NEW CODE
   function handleCursorMovement() {
     if (isRendering) return;
     if (equalCheckbox.checked) {
@@ -476,7 +522,7 @@ let equalNodes = [];
       return;
     }
 
-    dict = {};
+    graph = {};
     equalNodes = [];
 
     let { start, end } = getSelection(codeEditor);
@@ -509,30 +555,5 @@ let equalNodes = [];
     // Trigger a handleQueryChange to apply the new query
     // handleQueryChange();
   }
-  function saveState() {
-    localStorage.setItem("language", languageSelect.value);
-    localStorage.setItem("sourceCode", codeEditor.getValue());
-    saveQueryState();
-  }
 
-  function saveQueryState() {
-    localStorage.setItem("queryEnabled", equalCheckbox.checked);
-    localStorage.setItem("query", queryEditor.getValue());
-  }
-
-  function debounce(func, wait, immediate) {
-    var timeout;
-    return function () {
-      var context = this,
-        args = arguments;
-      var later = function () {
-        timeout = null;
-        if (!immediate) func.apply(context, args);
-      };
-      var callNow = immediate && !timeout;
-      clearTimeout(timeout);
-      timeout = setTimeout(later, wait);
-      if (callNow) func.apply(context, args);
-    };
-  }
 })();

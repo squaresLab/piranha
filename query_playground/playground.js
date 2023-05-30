@@ -80,7 +80,6 @@ let tree;
 
   playgroundContainer.style.visibility = "visible";
 
-
   async function handleLanguageChange() {
     const newLanguageName = languageSelect.value;
     if (!languagesByName[newLanguageName]) {
@@ -103,7 +102,6 @@ let tree;
     await handleCodeChange();
     handleQueryChange();
   }
-
 
   async function handleCodeChange(editor, changes) {
     const newText = codeEditor.getValue() + "\n";
@@ -213,8 +211,6 @@ let tree;
     isRendering--;
     handleCursorMovement();
   }
-
-
 
   function runTreeQuery(_, startRow, endRow) {
     if (endRow == null) {
@@ -402,7 +398,7 @@ let tree;
     var timeout;
     return function () {
       var context = this,
-          args = arguments;
+        args = arguments;
       var later = function () {
         timeout = null;
         if (!immediate) func.apply(context, args);
@@ -414,8 +410,7 @@ let tree;
     };
   }
 
-
-/* ########## NEW CODE ##########
+  /* ########## NEW CODE ##########
    This is the code for the new query editor
    with generations based on the user's selection
    ########## NEW CODE ##########
@@ -424,15 +419,16 @@ let tree;
   // These variables are used to maintain the state of the generated query
   let graph = {}; // Graph that maintains the relevant parts of the query (from the selection node to nodes that were selected as equal)
   let equalNodes = []; // Store the nodes that the user selected as equal
+  let MAX_CHILD = 5; // Maximum number of children considered at each level
 
-  // Get the selection from the code editor
+  // Get the mouse selection from the code editor
   function getSelection(codeEditor) {
     const selection = codeEditor.getDoc().listSelections()[0];
     let start = { row: selection.anchor.line, column: selection.anchor.ch };
     let end = { row: selection.head.line, column: selection.head.ch };
     if (
-        start.row > end.row ||
-        (start.row === end.row && start.column > end.column)
+      start.row > end.row ||
+      (start.row === end.row && start.column > end.column)
     ) {
       let swap = end;
       end = start;
@@ -441,8 +437,7 @@ let tree;
     return { start, end };
   }
 
-  // NEW CODE
-  // DFS that populates a query string
+  // Recursively traverse the graph to generate a tree sitter query
   function fillQuery(node, graph, i, level = 2) {
     let type = node.type;
     let query = "\n" + " ".repeat(level) + `(${node.type} `;
@@ -465,8 +460,7 @@ let tree;
     return { i: i, query: query, constraints: constraints };
   }
 
-
-  // When the user selects something as equal
+  // When the user selects something as equal, we add that as a constraint to the displayed query
   function handleEquality() {
     let { start, end } = getSelection(codeEditor);
 
@@ -514,7 +508,7 @@ let tree;
     handleQueryChange();
   }
 
-  // NEW CODE
+  // Generate a basic tree sitter query that selects the node under the cursor
   function handleCursorMovement() {
     if (isRendering) return;
     if (equalCheckbox.checked) {
@@ -522,6 +516,7 @@ let tree;
       return;
     }
 
+    // Rest the graph and equal nodes once the user does a new selection
     graph = {};
     equalNodes = [];
 
@@ -537,23 +532,19 @@ let tree;
       do {
         if (cursor.nodeIsNamed) {
           let child_kind = cursor.nodeType;
+          // If the node has a field name, add it to the query
           if (cursor.currentFieldName() !== null) {
             queryString += `${cursor.currentFieldName()}: (${child_kind}) @child${childCount}\n `;
           } else {
+            // Otherwise it's anonymous
             queryString += `(${child_kind}) @child${childCount}\n `;
           }
         }
         childCount++;
-      } while (cursor.gotoNextSibling() && childCount < 5);
+      } while (cursor.gotoNextSibling() && childCount < MAX_CHILD); // Prevent the query from becoming too big because that might crash tree-sitter
     }
 
     queryString += ") @root";
-
-    // Set the query string as the current value in the query editor
     queryEditor.getDoc().setValue(queryString);
-
-    // Trigger a handleQueryChange to apply the new query
-    // handleQueryChange();
   }
-
 })();

@@ -11,13 +11,13 @@
  limitations under the License.
 */
 
-use clap::builder::Str;
+
 use std::result::Result;
 
 use derive_builder::Builder;
-use tree_sitter::Parser as TParser;
-use tree_sitter::{Node, TreeCursor};
-use tree_sitter_java as java;
+
+use tree_sitter::{Node};
+
 
 #[cfg(test)]
 #[path = "unit_tests/test_infer.rs"]
@@ -89,7 +89,8 @@ impl<'a> ReplaceWithChild<'a> {
     // Visit each child and check whether we find a node of interest
     let mut cursor = current_node.walk();
     if cursor.goto_first_child() {
-      while let child = cursor.node() {
+      loop {
+        let child = cursor.node();
         let field_name = cursor.field_name();
         if let Some(partial_query) = self.create_query_for_target_aux(&child) {
           let addition = match field_name {

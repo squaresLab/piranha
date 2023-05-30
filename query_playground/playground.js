@@ -69,7 +69,7 @@ let tree;
 
   codeEditor.on("changes", handleCodeChange);
   codeEditor.on("viewportChange", runTreeQueryOnChange);
-  codeEditor.on("cursorActivity", debounce(handleCursorMovement, 150));
+  codeEditor.on("cursorActivity", debounce(handleUserSelection, 150));
   queryEditor.on("changes", debounce(handleQueryChange, 150));
 
   loggingCheckbox.addEventListener("change", handleLoggingChange);
@@ -209,7 +209,7 @@ let tree;
     cluster.update(rows);
     treeRows = rows;
     isRendering--;
-    handleCursorMovement();
+    handleUserSelection();
   }
 
   function runTreeQuery(_, startRow, endRow) {
@@ -509,7 +509,7 @@ let tree;
   }
 
   // Generate a basic tree sitter query that selects the node under the cursor
-  function handleCursorMovement() {
+  function handleUserSelection() {
     if (isRendering) return;
     if (equalCheckbox.checked) {
       handleEquality();

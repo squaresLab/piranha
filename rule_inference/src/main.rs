@@ -19,6 +19,7 @@ use std::fs;
 use std::string::String;
 
 mod infer;
+mod simple_infer;
 mod synthesis;
 
 #[derive(Clone, Getters, CopyGetters, Debug, Parser, Builder)]

@@ -18,8 +18,7 @@ use getset::{CopyGetters, Getters};
 use std::fs;
 use std::string::String;
 
-mod infer;
-mod simple_infer;
+mod operations;
 mod synthesis;
 
 #[derive(Clone, Getters, CopyGetters, Debug, Parser, Builder)]

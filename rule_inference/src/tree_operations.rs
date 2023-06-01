@@ -11,17 +11,16 @@
  limitations under the License.
 */
 
-
 use std::result::Result;
+use std::vec;
 
 use derive_builder::Builder;
 
-use tree_sitter::{Node};
-
+use tree_sitter::Node;
 
 #[cfg(test)]
-#[path = "unit_tests/test_infer.rs"]
-mod unit_tests;
+#[path = "unit_tests/test_tree_operations.rs"]
+mod test_tree_operations;
 
 #[derive(Builder, Debug)]
 pub struct PiranhaRule {
@@ -34,6 +33,9 @@ pub struct PiranhaRule {
 pub struct ReplaceWithChild<'a> {
   root: &'a Node<'a>,
   child: &'a Node<'a>,
+  eq_nodes: Vec<&'a Node<'a>>,
+  constraints: Vec<String>,
+  source_code: &'a [u8],
 }
 
 impl<'a> ReplaceWithChild<'a> {
@@ -41,12 +43,20 @@ impl<'a> ReplaceWithChild<'a> {
   const PARENT_ID: &'static str = "parent";
   const CHILD_ID: &'static str = "child";
 
-  pub fn new(root: &'a Node<'a>, child: &'a Node<'a>) -> Self {
-    ReplaceWithChild { root, child }
+  pub fn new(
+    root: &'a Node<'a>, child: &'a Node<'a>, eq_nodes: Vec<&'a Node<'a>>, source_code: &'a [u8],
+  ) -> Self {
+    ReplaceWithChild {
+      root,
+      child,
+      eq_nodes,
+      constraints: vec![],
+      source_code,
+    }
   }
 
   /// Builds a Piranha rule for replacing `root` with `child`.
-  pub fn infer_rule(&self) -> Result<PiranhaRule, &'static str> {
+  pub fn generate_rule(&mut self) -> Result<PiranhaRule, &'static str> {
     let query = self.create_query_for_target();
     match query {
       Some(value) => Ok(
@@ -61,11 +71,22 @@ impl<'a> ReplaceWithChild<'a> {
     }
   }
 
-  /// Builds a Tree-sitter query that selects the `root` and the `child`.
-  pub fn create_query_for_target(&self) -> Option<String> {
+  /// Builds a Tree-sitter query that selects the `root` and the `child`, fixing `eq_nodes`.
+  fn create_query_for_target(&mut self) -> Option<String> {
+    self.constraints = vec![];
     self
       .create_query_for_target_aux(self.root)
       .map(|query_string| format!("{} @{}", query_string.trim(), Self::PARENT_ID.to_string()))
+      .map(|query_string| self.append_constraints(&query_string))
+  }
+
+  /// Appends constraints to a query string
+  fn append_constraints(&mut self, query_string: &String) -> String {
+    let mut query_string = query_string.clone();
+    for constraint in &self.constraints {
+      query_string.push_str(&format!(" {}", constraint));
+    }
+    query_string.to_string()
   }
 
   /// Recursively searches `current_node`'s children until it finds the `child`.
@@ -74,13 +95,25 @@ impl<'a> ReplaceWithChild<'a> {
   /// # Arguments
   ///
   /// * `current_node` - Node currently being searched.
-  fn create_query_for_target_aux(&self, current_node: &'a Node<'a>) -> Option<String> {
+  fn create_query_for_target_aux(&mut self, current_node: &Node) -> Option<String> {
     if current_node.id() == self.child.id() {
       return Some(format!(
         "({}) @{}",
         self.child.kind(),
         Self::CHILD_ID.to_string()
       ));
+    }
+
+    for eq_nodes in &self.eq_nodes {
+      if current_node.id() == eq_nodes.id() {
+        let target_n = self.constraints.len();
+        self.constraints.push(format!(
+          "(#eq? @target{} {})",
+          target_n,
+          current_node.utf8_text(self.source_code).unwrap()
+        ));
+        return Some(format!("({}) @target{}", current_node.kind(), target_n));
+      }
     }
 
     let mut query_string = String::from(format!("({} ", current_node.kind()));

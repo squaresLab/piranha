@@ -18,8 +18,8 @@ use getset::{CopyGetters, Getters};
 use std::fs;
 use std::string::String;
 
-mod operations;
 mod synthesis;
+mod tree_operations;
 
 #[derive(Clone, Getters, CopyGetters, Debug, Parser, Builder)]
 #[clap(version = "0.1", author = "Your Name")]

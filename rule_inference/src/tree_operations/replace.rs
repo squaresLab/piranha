@@ -15,21 +15,17 @@ use std::result::Result;
 use std::vec;
 
 use derive_builder::Builder;
+use getset::Getters;
 
+use crate::tree_operations::{PiranhaRule, PiranhaRuleBuilder};
 use tree_sitter::Node;
 
 #[cfg(test)]
-#[path = "unit_tests/test_tree_operations.rs"]
+#[path = "./unit_tests/test_tree_operations.rs"]
 mod test_tree_operations;
 
-#[derive(Builder, Debug)]
-pub struct PiranhaRule {
-  query: String,
-  replace_node: String,
-  replacement_str: String,
-}
-
 /// `ReplaceWithChild` constructs a query to replace a node with one of its children.
+#[derive(Debug, Getters)]
 pub struct ReplaceWithChild<'a> {
   root: &'a Node<'a>,
   child: &'a Node<'a>,

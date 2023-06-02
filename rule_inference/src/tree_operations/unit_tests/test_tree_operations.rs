@@ -11,7 +11,7 @@
  limitations under the License.
 */
 
-use crate::tree_operations::ReplaceWithChild;
+use crate::tree_operations::replace::ReplaceWithChild;
 use tree_sitter::Parser as TParser;
 use tree_sitter::Point;
 use tree_sitter_java as java;

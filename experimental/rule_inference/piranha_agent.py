@@ -31,16 +31,14 @@ logger.addHandler(ch)
 
 
 def test_piranha_timeout(source_code: str, language: str, raw_graph: RawRuleGraph):
-    # Prepare arguments for Piranha execution
-    args = PiranhaArguments(
-        code_snippet=source_code,
-        language=language,
-        rule_graph=raw_graph.to_graph(),
-        dry_run=True,
-    )
-
-    # Execute Piranha
     try:
+        # Prepare arguments for Piranha execution
+        args = PiranhaArguments(
+            code_snippet=source_code,
+            language=language,
+            rule_graph=raw_graph.to_graph(),
+            dry_run=True,
+        )
         piranha_results = execute_piranha(args)
         # Check if the execution returns results, if yes then return the content of the first result
         # Otherwise, return an empty list

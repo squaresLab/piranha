@@ -179,6 +179,11 @@ class Inference:
             )
             replacement_str = qw.replace_with_tags(lines_affected)
 
+            # If the replacement contains the outermost node, we need a filter to prevent
+            # recursive application of the rule.
+            if qw.outer_most_node in replacement_str:
+                pass  # FIXME
+
             return RawRule(
                 name=self.name,
                 query=qw.query_str,
